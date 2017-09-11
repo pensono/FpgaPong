@@ -3,7 +3,7 @@ input clk;
 output vga_h_sync, vga_v_sync;
 output inDisplayArea;
 output [9:0] CounterX;
-output [8:0] CounterY;
+output [9:0] CounterY;
 
 //////////////////////////////////////////////////
 reg [9:0] CounterX;
@@ -28,11 +28,8 @@ end
 reg	vga_HS, vga_VS;
 always @(posedge clk)
 begin
-	if (CounterX == 656)
-		vga_HS <= 1; 
-	else if (CounterX == 752)
-		vga_HS <= 0;
-	vga_VS <= (CounterY[9:1]==245); // change this value to move the display vertically
+  vga_HS <= (CounterX[9:4]==0);   // active for 16 clocks
+  vga_VS <= (CounterY==0);   // active for 768 clocks
 end
 
 reg inDisplayArea;
@@ -42,7 +39,7 @@ if(inDisplayArea==0)
 else
 	inDisplayArea <= !(CounterX==639);
 	
-assign vga_h_sync = 1; // ~vga_HS;
+assign vga_h_sync = ~vga_HS;
 assign vga_v_sync = ~vga_VS;
 
 endmodule

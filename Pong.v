@@ -2,6 +2,13 @@
 // (c) fpga4fun.com
 
 module Pong(clk, vga_h_sync, vga_v_sync, vga_R, vga_G, vga_B, test, testGround, ground, buttonLeft, buttonRight);
+
+reg [1:0] cnt;
+always @(posedge clk) cnt <= cnt + 1;
+
+wire vga_clk;
+assign vga_clk = cnt[1];
+
 input clk,buttonLeft,buttonRight;
 output vga_h_sync, vga_v_sync, vga_R, vga_G, vga_B, test, testGround, ground;
 
@@ -11,7 +18,7 @@ wire [8:0] CounterY;
 
 reg [8:0] location;
 
-hvsync_generator syncgen(.clk(clk), .vga_h_sync(vga_h_sync), .vga_v_sync(vga_v_sync), 
+hvsync_generator syncgen(.clk(vga_clk), .vga_h_sync(vga_h_sync), .vga_v_sync(vga_v_sync), 
                             .inDisplayArea(inDisplayArea), .CounterX(CounterX), .CounterY(CounterY));
 
 wire paddle = (location > CounterX) & (location < CounterX + 96) & (CounterY[8:3] == 40);
@@ -28,24 +35,11 @@ begin
   vga_B <= B & inDisplayArea;
 end
 
-reg [23:0] cnt;
-always @(posedge clk) cnt <= cnt + 24'd1;
-
 assign leftPressed = ~buttonLeft; // Buttons are NC
 assign rightPressed = ~buttonRight;
-always @(posedge cnt[20])
-begin
-	if (leftPressed| rightPressed) begin
-		if (leftPressed)
-			location <= location + 1;
-		else
-			location <= location - 1;
-	end
-end
 
-assign test = cnt[22];
 assign testGround = 0;
-
+assign test = clk;
 assign ground = 0;
 
 endmodule

@@ -14,13 +14,11 @@ reg [8:0] location;
 hvsync_generator syncgen(.clk(clk), .vga_h_sync(vga_h_sync), .vga_v_sync(vga_v_sync), 
                             .inDisplayArea(inDisplayArea), .CounterX(CounterX), .CounterY(CounterY));
 
-// Draw a border around the screen
-//wire R = (CounterY[3] | (CounterX==256));
-//wire G = 0; //(CounterX[5] ^ CounterX[6]) | (CounterX==256)
-//wire B = (CounterX[4] | (CounterX==256));
-wire R = (location != CounterX);
-wire G = 1;
-wire B = 1;
+wire paddle = (location > CounterX) & (location < CounterX + 96) & (CounterY[8:3] == 40);
+									 
+wire R = CounterX[4] ^ CounterY[3];
+wire G = CounterX[6] ^ CounterY[6];
+wire B = CounterX[0] ^ CounterY[0];
 
 reg vga_R, vga_G, vga_B;
 always @(posedge clk)

@@ -4,7 +4,7 @@
 module Pong(clk, vga_h_sync, vga_v_sync, vga_R, vga_G, vga_B, test, testGround, ground, buttonLeft, buttonRight);
 
 parameter PADDLE_TOP = 448;
-parameter PADDLE_WIDTH = 48;
+parameter PADDLE_WIDTH = 64;
 parameter BLOCK_WIDTH = 16;
 
 parameter BALL_SIZE = 8;
@@ -16,7 +16,7 @@ wire vga_clk;
 assign vga_clk = cnt[1];
 
 wire game_clk;
-assign game_clk = cnt[12];
+assign game_clk = cnt[13];
 
 reg oddFrame;
 always @(posedge vga_h_sync) oddFrame <= ~oddFrame;
@@ -29,13 +29,13 @@ wire [9:0] CounterX;
 wire [8:0] CounterY;
 
 reg [15:0] location;
-reg [7:0] speed;
 
 reg [15:0] ballX = ((640 / 2) + 4) << 6;
 reg [14:0] ballY = (480 - 32) << 6;
 
-reg ballGoingLeft = 1;
+reg ballGoingRight = 1;
 reg ballGoingDown = 0;
+reg[1:0] ballHorizSpeed;
 
 reg[31:0] blocks [15:0];
 
@@ -81,40 +81,45 @@ end
 wire[9:0] ballLeft = ballX[15:6] + BALL_SIZE;
 wire[8:0] ballBottom = ballY[14:6] + BALL_SIZE;
 
-wire[9:0] leadingX = ballGoingLeft ? ballLeft : ballX[15:6];
+wire[9:0] leadingX = ballGoingRight ? ballLeft : ballX[15:6];
 wire[8:0] leadingY = ballGoingDown ? ballBottom : ballY[14:6];
 
 wire canCollide = ballY[14:6] < (ballGoingDown ? 239 : 256);
 
+wire[5:0] difference = ballX[15:6] - location[15:6];
+
 always @(posedge game_clk) begin
-	if (ballGoingLeft) begin
+	if (ballGoingRight) begin
 		if (ballX[15:6] == 640 - 8)
-			ballGoingLeft <= 0;
+			ballGoingRight <= 0;
 		if (leadingX[4:0] == 0 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
 			blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
-			ballGoingLeft <= 0;
+			ballGoingRight <= 0;
 		end
-		ballX <= ballX + 1;
+		ballX <= ballX + ballHorizSpeed + 1;
 	end else begin
 		if (ballX[15:6] == 0)
-			ballGoingLeft <= 1;
+			ballGoingRight <= 1;
 		if (leadingX[4:0] == 'b11111 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
 			blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
-			ballGoingLeft <= 1;
+			ballGoingRight <= 1;
 		end
-		ballX <= ballX - 1;
+		ballX <= ballX - ballHorizSpeed - 1;
 	end
 		
 	if (ballGoingDown) begin
 		if (ballY[14:6] == 480)
 			ballGoingDown <= 0; // Lose a life
-		if ((ballY == PADDLE_TOP - BALL_SIZE) & (ballX[15:6] + BALL_SIZE > location[15:6]) & (ballX[15:6] < location[15:6] + PADDLE_WIDTH))
+		if ((ballY[14:6] == PADDLE_TOP - BALL_SIZE) & (ballLeft > location[15:6]) & (ballX[15:6] < location[15:6] + PADDLE_WIDTH)) begin
+			ballHorizSpeed <= 3 - (difference[4:3] ^ {2{difference[5]}});
+			ballGoingRight <= difference[5];
 			ballGoingDown <= 0;
+		end
 		if (leadingY[3:0] == 0 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
 			blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
 			ballGoingDown <= 0;
 		end
-		ballY <= ballY + 1;
+		ballY <= ballY + 3;
 	end else begin
 		if (ballY[14:6] == 0)
 			ballGoingDown <= 1;
@@ -122,7 +127,7 @@ always @(posedge game_clk) begin
 			blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
 			ballGoingDown <= 1;
 		end
-		ballY <= ballY - 1;
+		ballY <= ballY - 3;
 	end
 end
 
@@ -132,19 +137,12 @@ assign rightPressed = ~buttonRight;
 
 always @(posedge game_clk) begin
 	if (leftPressed)  begin
-		if (speed != -1)
-			speed <= speed + 1;
-		if (location[15:6] != 640 - 48)
-			location <= location + speed[7:5];
+		if (location[15:6] != 640 - PADDLE_WIDTH)
+			location <= location + 4;
 	end else if (rightPressed) begin
-		if (speed != -1)
-			speed <= speed + 1;
 		if (location[15:6] != 0) begin
-			location <= location - speed[7:5];
+			location <= location - 4;
 		end
-	end else begin 
-		if (speed != 0)
-			speed <= speed - 1;
 	end
 end
 

@@ -12,6 +12,10 @@ parameter BALL_SIZE = 8;
 reg [15:0] cnt;
 always @(posedge clk) cnt <= cnt + 'd1;
 
+reg [2:0] lives; // A 1 for each life
+
+reg[15:0] pauseTime = -1;  // Ticks remaining of pause
+
 wire vga_clk;
 assign vga_clk = cnt[1];
 
@@ -31,7 +35,7 @@ wire [8:0] CounterY;
 reg [15:0] location;
 
 reg [15:0] ballX = ((640 / 2) + 4) << 6;
-reg [14:0] ballY = (480 - 32) << 6;
+reg [14:0] ballY = (480 - 64) << 6;
 
 reg ballGoingRight = 1;
 reg ballGoingDown = 0;
@@ -42,19 +46,19 @@ reg[31:0] blocks [15:0];
 
 initial begin
 blocks[15] = 32'b0000000000011111111111111111111;
-blocks[14] = 32'b0000000000011101010101010101011;
+blocks[14] = 32'b0000000000010101010101010101011;
 blocks[13] = 32'b0000000000011010101010101010101;
-blocks[12] = 32'b0000000000011101010101010101011;
-blocks[11] = 32'b0000000000011010101010101010101;
-blocks[10] = 32'b0000000000011101010101010101011;
-blocks[9]  = 32'b0000000000011010101010101010101;
-blocks[8]  = 32'b0000000000011101010101010101011;
-blocks[7]  = 32'b0000000000011010101010101010101;
-blocks[6]  = 32'b0000000000011101010101010101011;
-blocks[5]  = 32'b0000000000011010101010101010101;
-blocks[4]  = 32'b0000000000011101010101010101011;
+blocks[12] = 32'b0000000000010101010101010101011;
+blocks[11] = 32'b0000000000011010111111111110101;
+blocks[10] = 32'b0000000000010101111111111101011;
+blocks[9]  = 32'b0000000000011010111111111110101;
+blocks[8]  = 32'b0000000000010101111000111101011;
+blocks[7]  = 32'b0000000000011010111111111110101;
+blocks[6]  = 32'b0000000000010101111111111101011;
+blocks[5]  = 32'b0000000000011010111111111110101;
+blocks[4]  = 32'b0000000000010101010101010101011;
 blocks[3]  = 32'b0000000000011010101010101010101;
-blocks[2]  = 32'b0000000000011101010101010101011;
+blocks[2]  = 32'b0000000000010101010101010101011;
 blocks[1]  = 32'b0000000000011010101010101010101;
 blocks[0]  = 32'b0000000000011111111111111111111;
 end
@@ -89,51 +93,54 @@ wire canCollide = ballY[14:6] < (ballGoingDown ? 239 : 256);
 wire[5:0] difference = ballX[15:6] - location[15:6];
 
 always @(posedge game_clk) begin
-	if (ballGoingRight) begin
-		if (ballX[15:6] == 640 - 8)
-			ballGoingRight <= 0;
-		if (leadingX[4:0] == 0 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
-			blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
-			ballGoingRight <= 0;
-		end
-		ballX <= ballX + ballHorizSpeed + 1;
+	if (pauseTime != 0) begin
+		pauseTime <= pauseTime - 1;
 	end else begin
-		if (ballX[15:6] == 0)
-			ballGoingRight <= 1;
-		if (leadingX[4:0] == 'b11111 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
-			blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
-			ballGoingRight <= 1;
+		if (ballGoingRight) begin
+			if (ballX[15:6] == 640 - 8)
+				ballGoingRight <= 0;
+			if (leadingX[4:0] == 0 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
+				blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
+				ballGoingRight <= 0;
+			end
+			ballX <= ballX + ballHorizSpeed + 1;
+		end else begin
+			if (ballX[15:6] == 0)
+				ballGoingRight <= 1;
+			if (leadingX[4:0] == 'b11111 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
+				blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
+				ballGoingRight <= 1;
+			end
+			ballX <= ballX - ballHorizSpeed - 1;
 		end
-		ballX <= ballX - ballHorizSpeed - 1;
-	end
-		
-	if (ballGoingDown) begin
-		if (ballY[14:6] == 480)
-			ballGoingDown <= 0; // Lose a life
-		if ((ballY[14:6] == PADDLE_TOP - BALL_SIZE) & (ballLeft > location[15:6]) & (ballX[15:6] < location[15:6] + PADDLE_WIDTH)) begin
-			ballHorizSpeed <= 3 - (difference[4:3] ^ {2{difference[5]}});
-			ballGoingRight <= difference[5];
-			ballGoingDown <= 0;
+			
+		if (ballGoingDown) begin
+			if (ballY[14:6] == 480)
+				ballGoingDown <= 0; // Lose a life
+			if ((ballY[14:6] == PADDLE_TOP - BALL_SIZE) & (ballLeft > location[15:6]) & (ballX[15:6] < location[15:6] + PADDLE_WIDTH)) begin
+				ballHorizSpeed <= 3 - (difference[4:3] ^ {2{difference[5]}});
+				ballGoingRight <= difference[5];
+				ballGoingDown <= 0;
+			end
+			if (leadingY[3:0] == 0 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
+				blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
+				ballGoingDown <= 0;
+			end
+			ballY <= ballY + 3;
+		end else begin
+			if (ballY[14:6] == 0)
+				ballGoingDown <= 1;
+			if (leadingY[3:0] == 'b1111 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
+				blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
+				ballGoingDown <= 1;
+			end
+			ballY <= ballY - 3;
 		end
-		if (leadingY[3:0] == 0 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
-			blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
-			ballGoingDown <= 0;
-		end
-		ballY <= ballY + 3;
-	end else begin
-		if (ballY[14:6] == 0)
-			ballGoingDown <= 1;
-		if (leadingY[3:0] == 'b1111 & canCollide & blocks[leadingY[7:4]][leadingX[9:5]]) begin
-			blocks[leadingY[7:4]][leadingX[9:5]] <= 0;
-			ballGoingDown <= 1;
-		end
-		ballY <= ballY - 3;
 	end
 end
 
 assign leftPressed = ~buttonLeft; // Buttons are NC
 assign rightPressed = ~buttonRight;
-
 
 always @(posedge game_clk) begin
 	if (leftPressed)  begin

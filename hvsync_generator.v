@@ -34,7 +34,7 @@ begin
 		vga_HS <= 0;
   
 	if (CounterY==491)
-		vga_HS <= 1;
+		vga_HS <= 1; // Should be VS!!
 	else if (CounterX == 493)
 		vga_HS <= 0;
 end

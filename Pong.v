@@ -6,15 +6,16 @@ module Pong(clk, vga_h_sync, vga_v_sync, vga_R, vga_G, vga_B, test, testGround, 
 parameter PADDLE_TOP = 448;
 parameter PADDLE_WIDTH = 64;
 parameter BLOCK_WIDTH = 16;
+parameter LIFE_BLOCK_Y = 464;
 
 parameter BALL_SIZE = 8;
 
 reg [15:0] cnt;
 always @(posedge clk) cnt <= cnt + 'd1;
 
-reg [2:0] lives; // A 1 for each life
+reg [2:0] life = -1; // A 1 for each life
 
-reg[15:0] pauseTime = -1;  // Ticks remaining of pause
+reg[14:0] pauseTime = -1;  // Ticks remaining of pause
 
 wire vga_clk;
 assign vga_clk = cnt[1];
@@ -22,8 +23,8 @@ assign vga_clk = cnt[1];
 wire game_clk;
 assign game_clk = cnt[13];
 
-reg oddFrame;
-always @(posedge vga_h_sync) oddFrame <= ~oddFrame;
+reg[5:0] frameNumber;
+always @(posedge vga_v_sync) frameNumber <= frameNumber + 1;
 
 input clk,buttonLeft,buttonRight;
 output vga_h_sync, vga_v_sync, vga_R, vga_G, vga_B, test, testGround, ground;
@@ -32,7 +33,7 @@ wire inDisplayArea;
 wire [9:0] CounterX;
 wire [8:0] CounterY;
 
-reg [15:0] location;
+reg [15:0] location = ((640 - PADDLE_WIDTH) / 2) << 6;
 
 reg [15:0] ballX = ((640 / 2) + 4) << 6;
 reg [14:0] ballY = (480 - 64) << 6;
@@ -51,9 +52,9 @@ blocks[13] = 32'b0000000000011010101010101010101;
 blocks[12] = 32'b0000000000010101010101010101011;
 blocks[11] = 32'b0000000000011010111111111110101;
 blocks[10] = 32'b0000000000010101111111111101011;
-blocks[9]  = 32'b0000000000011010111111111110101;
-blocks[8]  = 32'b0000000000010101111000111101011;
-blocks[7]  = 32'b0000000000011010111111111110101;
+blocks[9]  = 32'b0000000000011010110000001110101;
+blocks[8]  = 32'b0000000000010101110000001101011;
+blocks[7]  = 32'b0000000000011010110000001110101;
 blocks[6]  = 32'b0000000000010101111111111101011;
 blocks[5]  = 32'b0000000000011010111111111110101;
 blocks[4]  = 32'b0000000000010101010101010101011;
@@ -66,13 +67,18 @@ end
 hvsync_generator syncgen(.clk(vga_clk), .vga_h_sync(vga_h_sync), .vga_v_sync(vga_v_sync), 
                             .inDisplayArea(inDisplayArea), .CounterX(CounterX), .CounterY(CounterY));
 
+wire playing = (life[2]) | (pauseTime == 0);
+									 
 wire paddle = (CounterX > location[15:6]) & (CounterX < location[15:6] + PADDLE_WIDTH) & (CounterY[8:3] == PADDLE_TOP / 8);
 wire ball = (CounterX > ballX[15:6]) & (CounterX < ballX[15:6] + BALL_SIZE) & (CounterY > ballY[14:6]) & (CounterY < ballY[14:6] + BALL_SIZE);
 wire block = blocks[CounterY[7:4]][CounterX[9:5]] & (CounterY < 256);
-
-wire R = paddle | ball | (block & (CounterX[0] ^ oddFrame));
-wire G = paddle | ball;
-wire B = paddle | ball | block;
+wire lifeBall = (CounterY[8:3] == LIFE_BLOCK_Y / 8) & (CounterX[3]) & (CounterX[9:6] == 0) & 
+		((CounterX[5:4] == 2'b00 & life[0]) | (CounterX[5:4] == 2'b01 & life[1]) | (CounterX[5:4] == 2'b10 & life[2]));
+wire flashingLifeBall = lifeBall & (frameNumber[2] | playing);
+		
+wire R = paddle | flashingLifeBall | ball | (block & (CounterX[0] ^ CounterY[0] ^ frameNumber[0]));
+wire G = paddle | flashingLifeBall | ball;
+wire B = paddle | flashingLifeBall | ball | block;
 
 reg vga_R, vga_G, vga_B;
 always @(posedge clk)
@@ -92,9 +98,20 @@ wire canCollide = ballY[14:6] < (ballGoingDown ? 239 : 256);
 
 wire[5:0] difference = ballX[15:6] - location[15:6];
 
+assign leftPressed = ~buttonLeft; // Buttons are NC
+assign rightPressed = ~buttonRight;
+
 always @(posedge game_clk) begin
-	if (pauseTime != 0) begin
+	if (life[0] == 0) begin
+		pauseTime <= -1; // Game over :(
+		ballX <= (640 + 32) << 6; // Move offscreen
+	end else	if (pauseTime != 0) begin
 		pauseTime <= pauseTime - 1;
+		location <= ((640 - PADDLE_WIDTH) / 2) << 6;
+		ballX <= ((640 / 2) + 4) << 6;
+		ballY <= (480 - 64) << 6;
+		ballGoingDown <= 0;
+		ballHorizSpeed <= 0;
 	end else begin
 		if (ballGoingRight) begin
 			if (ballX[15:6] == 640 - 8)
@@ -115,8 +132,10 @@ always @(posedge game_clk) begin
 		end
 			
 		if (ballGoingDown) begin
-			if (ballY[14:6] == 480)
-				ballGoingDown <= 0; // Lose a life
+			if (ballY[14:6] == 480) begin
+				life <= {1'b0, life[2:1]};
+				pauseTime <= -1;
+			end
 			if ((ballY[14:6] == PADDLE_TOP - BALL_SIZE) & (ballLeft > location[15:6]) & (ballX[15:6] < location[15:6] + PADDLE_WIDTH)) begin
 				ballHorizSpeed <= 3 - (difference[4:3] ^ {2{difference[5]}});
 				ballGoingRight <= difference[5];
@@ -136,19 +155,14 @@ always @(posedge game_clk) begin
 			end
 			ballY <= ballY - 3;
 		end
-	end
-end
-
-assign leftPressed = ~buttonLeft; // Buttons are NC
-assign rightPressed = ~buttonRight;
-
-always @(posedge game_clk) begin
-	if (leftPressed)  begin
-		if (location[15:6] != 640 - PADDLE_WIDTH)
-			location <= location + 4;
-	end else if (rightPressed) begin
-		if (location[15:6] != 0) begin
-			location <= location - 4;
+	
+		if (leftPressed)  begin
+			if (location[15:6] != 640 - PADDLE_WIDTH)
+				location <= location + 4;
+		end else if (rightPressed) begin
+			if (location[15:6] != 0) begin
+				location <= location - 4;
+			end
 		end
 	end
 end
